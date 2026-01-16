@@ -109,7 +109,11 @@ void updater::downloadLatestLoaderResources() {
         [](Result<server::ServerLoaderVersion, server::ServerError>* res) {
             if (res->ok()) {
                 auto& release = res->unwrap();
-                updater::downloadLoaderUpdate(formatDownloadUrl(release.tag));
+
+                updater::tryDownloadLoaderResources(
+                    formatResourcesUrl(release.tag),
+                    false
+                );
             } else {
                 ResourceDownloadEvent(
                     UpdateFailed("Unable to download resources: " + res->unwrapErr().details)
@@ -182,63 +186,21 @@ void updater::updateSpecialFiles() {
 }
 
 void updater::downloadLoaderResources(bool useLatestRelease) {
-    if (RUNNING_REQUESTS.contains("@downloadLoaderResources")) return;
-
     auto req = web::WebRequest();
     req.header("If-Modified-Since", Mod::get()->getSavedValue("last-modified-tag-exists-check", std::string()));
     req.userAgent("github_api/1.0");
 
-    server::getLoaderVersion(Loader::get()->getVersion().toVString()).listen([useLatestRelease](Result<server::ServerLoaderVersion, server::ServerError>* res) {
-        if (res->ok()) {
-            auto& release = res->unwrap();
+    server::getLoaderVersion(Loader::get()->getVersion().toVString()).listen(
+        [useLatestRelease](Result<server::ServerLoaderVersion, server::ServerError>* res) {
+            if (res->ok()) {
+                auto& release = res->unwrap();
 
-            updater::tryDownloadLoaderResources(
-                formatResourcesUrl(release.tag), false
-            );
-            ResourceDownloadEvent(UpdateFailed("Unable to find resources in release")).post();
-            return;
+                updater::tryDownloadLoaderResources(
+                    formatResourcesUrl(release.tag), false
+                );
+                ResourceDownloadEvent(UpdateFailed("Unable to find resources in release")).post();
+                return;
 
-        }
-        if (useLatestRelease) {
-            log::info("Loader version {} does not exist, trying to download latest resources", Loader::get()->getVersion().toVString());
-            downloadLatestLoaderResources();
-        }
-        else {
-            log::warn("Loader version {} does not exist on GitHub, not downloading the resources", Loader::get()->getVersion().toVString());
-            ResourceDownloadEvent(UpdateFinished()).post();
-        }
-    });
-
-    RUNNING_REQUESTS.emplace(
-        "@downloadLoaderResources",
-        req.get("https://api.github.com/repos/geode-sdk/geode/releases/tags/" + Loader::get()->getVersion().toVString()).map(
-        [useLatestRelease](web::WebResponse* response) {
-            // PLEASE make sure the erase happens at the end of this function
-            // i have spent too much time debugging this crash
-            auto doErase = [&] {
-                auto retval = *response;
-                RUNNING_REQUESTS.erase("@downloadLoaderResources");
-                return retval;
-            };
-
-            if (response->ok()) {
-                if (auto ok = response->json()) {
-                    auto root = checkJson(ok.unwrap(), "[]");
-
-                    // find release asset
-                    for (auto& obj : root.needs("assets").items()) {
-                        if (obj.needs("name").get<std::string>() == "resources.zip") {
-                            updater::tryDownloadLoaderResources(
-                                obj.needs("browser_download_url").get<std::string>(),
-                                false
-                            );
-                            return doErase();
-                        }
-                    }
-
-                    ResourceDownloadEvent(UpdateFailed("Unable to find resources in release")).post();
-                    return doErase();
-                }
             }
             if (useLatestRelease) {
                 log::info("Loader version {} does not exist, trying to download latest resources", Loader::get()->getVersion().toVString());
@@ -248,10 +210,8 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
                 log::warn("Loader version {} does not exist on GitHub, not downloading the resources", Loader::get()->getVersion().toVString());
                 ResourceDownloadEvent(UpdateFinished()).post();
             }
-
-            return doErase();
         }
-    ));
+    );
 }
 
 bool updater::verifyLoaderResources() {
@@ -269,7 +229,7 @@ bool updater::verifyLoaderResources() {
             std::filesystem::is_directory(resourcesDir)
     )) {
         log::debug("Resources directory does not exist");
-        updater::downloadLoaderResources(true);
+        updater::downloadLoaderResources();
         return false;
     }
 
