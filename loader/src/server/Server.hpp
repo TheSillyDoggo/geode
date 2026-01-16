@@ -187,6 +187,7 @@ namespace server {
     );
 
     ServerRequest<std::vector<ServerModUpdate>> checkAllUpdates(bool useCache = true);
+    ServerRequest<ServerLoaderVersion> getLoaderVersion(std::string_view tag, bool useCache = true);
     ServerRequest<ServerLoaderVersion> getLatestLoaderVersion(bool useCache = true);
 
     void clearServerCaches(bool clearGlobalCaches = false);

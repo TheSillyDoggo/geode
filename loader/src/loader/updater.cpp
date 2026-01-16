@@ -92,6 +92,16 @@ void updater::fetchLatestGithubRelease(
 }
 */
 
+namespace {
+    inline std::string formatDownloadUrl(std::string_view tag) {
+        return fmt::format("https://github.com/geode-sdk/geode/releases/download/{0}/geode-{0}-{1}.zip", tag, GEODE_PLATFORM_SHORT_IDENTIFIER_NOARCH);
+    }
+
+    inline std::string formatResourcesUrl(std::string_view tag) {
+        return fmt::format("https://github.com/geode-sdk/geode/releases/download/{}/resources.zip", tag);
+    }
+}
+
 void updater::downloadLatestLoaderResources() {
     log::debug("Downloading latest resources", Loader::get()->getVersion().toVString());
 
@@ -99,9 +109,7 @@ void updater::downloadLatestLoaderResources() {
         [](Result<server::ServerLoaderVersion, server::ServerError>* res) {
             if (res->ok()) {
                 auto& release = res->unwrap();
-                updater::downloadLoaderUpdate(
-                    fmt::format("https://github.com/geode-sdk/geode/releases/download/{0}/geode-{0}-{1}.zip", release.tag, GEODE_PLATFORM_SHORT_IDENTIFIER_NOARCH)
-                );
+                updater::downloadLoaderUpdate(formatDownloadUrl(release.tag));
             } else {
                 ResourceDownloadEvent(
                     UpdateFailed("Unable to download resources: " + res->unwrapErr().details)
@@ -179,6 +187,28 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
     auto req = web::WebRequest();
     req.header("If-Modified-Since", Mod::get()->getSavedValue("last-modified-tag-exists-check", std::string()));
     req.userAgent("github_api/1.0");
+
+    server::getLoaderVersion(Loader::get()->getVersion().toVString()).listen([useLatestRelease](Result<server::ServerLoaderVersion, server::ServerError>* res) {
+        if (res->ok()) {
+            auto& release = res->unwrap();
+
+            updater::tryDownloadLoaderResources(
+                formatResourcesUrl(release.tag), false
+            );
+            ResourceDownloadEvent(UpdateFailed("Unable to find resources in release")).post();
+            return;
+
+        }
+        if (useLatestRelease) {
+            log::info("Loader version {} does not exist, trying to download latest resources", Loader::get()->getVersion().toVString());
+            downloadLatestLoaderResources();
+        }
+        else {
+            log::warn("Loader version {} does not exist on GitHub, not downloading the resources", Loader::get()->getVersion().toVString());
+            ResourceDownloadEvent(UpdateFinished()).post();
+        }
+    });
+
     RUNNING_REQUESTS.emplace(
         "@downloadLoaderResources",
         req.get("https://api.github.com/repos/geode-sdk/geode/releases/tags/" + Loader::get()->getVersion().toVString()).map(
@@ -370,9 +400,7 @@ void updater::checkForLoaderUpdates() {
                 }
 
                 // find release asset
-                updater::downloadLoaderUpdate(
-                    fmt::format("https://github.com/geode-sdk/geode/releases/download/{0}/geode-{0}-{1}.zip", release.tag, GEODE_PLATFORM_SHORT_IDENTIFIER_NOARCH)
-                );
+                updater::downloadLoaderUpdate(formatDownloadUrl(release.tag));
             } else {
                 log::error("Failed to fetch updates {}", res->unwrapErr().details);
                 LoaderUpdateEvent(

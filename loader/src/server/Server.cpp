@@ -904,9 +904,9 @@ ServerRequest<std::vector<ServerModUpdate>> server::checkAllUpdates(bool useCach
     );
 }
 
-ServerRequest<ServerLoaderVersion> server::getLatestLoaderVersion(bool useCache) {
+ServerRequest<ServerLoaderVersion> server::getLoaderVersion(std::string_view tag, bool useCache) {
     if (useCache) {
-        return getCache<getLatestLoaderVersion>().get();
+        return getCache<getLoaderVersion>().get(tag);
     }
 
     auto req = web::WebRequest();
@@ -915,7 +915,7 @@ ServerRequest<ServerLoaderVersion> server::getLatestLoaderVersion(bool useCache)
     req.param("platform", GEODE_PLATFORM_SHORT_IDENTIFIER_NOARCH);
     req.param("gd", GEODE_GD_VERSION_STR);
 
-    return req.get(formatServerURL("/loader/versions/latest")).map(
+    return req.get(formatServerURL("/loader/versions/{}", tag)).map(
         [](web::WebResponse* response) -> Result<ServerLoaderVersion, ServerError> {
             if (response->ok()) {
                 // Parse payload
@@ -938,6 +938,10 @@ ServerRequest<ServerLoaderVersion> server::getLatestLoaderVersion(bool useCache)
     );
 }
 
+ServerRequest<ServerLoaderVersion> server::getLatestLoaderVersion(bool useCache) {
+    return getLoaderVersion("latest", useCache);
+}
+
 void server::clearServerCaches(bool clearGlobalCaches) {
     getCache<&getMods>().clear();
     getCache<&getMod>().clear();
@@ -947,7 +951,6 @@ void server::clearServerCaches(bool clearGlobalCaches) {
     if (clearGlobalCaches) {
         getCache<&getTags>().clear();
         getCache<&checkAllUpdates>().clear();
-        getCache<&getLatestLoaderVersion>().clear();
     }
 }
 
