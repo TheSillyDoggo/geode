@@ -190,7 +190,7 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
     req.header("If-Modified-Since", Mod::get()->getSavedValue("last-modified-tag-exists-check", std::string()));
     req.userAgent("github_api/1.0");
 
-    server::getLoaderVersion(Loader::get()->getVersion().toVString()).listen(
+    server::getLoaderVersion(Loader::get()->getVersion().toNonVString()).listen(
         [useLatestRelease](Result<server::ServerLoaderVersion, server::ServerError>* res) {
             if (res->ok()) {
                 auto& release = res->unwrap();
@@ -198,9 +198,7 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
                 updater::tryDownloadLoaderResources(
                     formatResourcesUrl(release.tag), false
                 );
-                ResourceDownloadEvent(UpdateFailed("Unable to find resources in release")).post();
                 return;
-
             }
             if (useLatestRelease) {
                 log::info("Loader version {} does not exist, trying to download latest resources", Loader::get()->getVersion().toVString());
@@ -229,7 +227,7 @@ bool updater::verifyLoaderResources() {
             std::filesystem::is_directory(resourcesDir)
     )) {
         log::debug("Resources directory does not exist");
-        updater::downloadLoaderResources();
+        updater::downloadLoaderResources(true);
         return false;
     }
 
