@@ -186,11 +186,13 @@ void updater::updateSpecialFiles() {
 }
 
 void updater::downloadLoaderResources(bool useLatestRelease) {
-    auto req = web::WebRequest();
-    req.header("If-Modified-Since", Mod::get()->getSavedValue("last-modified-tag-exists-check", std::string()));
-    req.userAgent("github_api/1.0");
+    static bool DOWNLOADING_LOADER_RESOURCES = false;
 
-    server::getLoaderVersion(Loader::get()->getVersion().toNonVString()).listen(
+    if (DOWNLOADING_LOADER_RESOURCES) return;
+    DOWNLOADING_LOADER_RESOURCES = true;
+
+    // server::getLoaderVersion(Loader::get()->getVersion().toNonVString()).listen(
+    server::getLoaderVersion("4.10.0").listen(
         [useLatestRelease](Result<server::ServerLoaderVersion, server::ServerError>* res) {
             if (res->ok()) {
                 auto& release = res->unwrap();
@@ -198,6 +200,8 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
                 updater::tryDownloadLoaderResources(
                     formatResourcesUrl(release.tag), false
                 );
+
+                DOWNLOADING_LOADER_RESOURCES = false;
                 return;
             }
             if (useLatestRelease) {
@@ -208,6 +212,8 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
                 log::warn("Loader version {} does not exist on GitHub, not downloading the resources", Loader::get()->getVersion().toVString());
                 ResourceDownloadEvent(UpdateFinished()).post();
             }
+
+            DOWNLOADING_LOADER_RESOURCES = false;
         }
     );
 }
