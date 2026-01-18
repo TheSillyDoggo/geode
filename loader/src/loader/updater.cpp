@@ -191,8 +191,7 @@ void updater::downloadLoaderResources(bool useLatestRelease) {
     if (DOWNLOADING_LOADER_RESOURCES) return;
     DOWNLOADING_LOADER_RESOURCES = true;
 
-    // server::getLoaderVersion(Loader::get()->getVersion().toNonVString()).listen(
-    server::getLoaderVersion("4.10.0").listen(
+    server::getLoaderVersion(Loader::get()->getVersion().toNonVString()).listen(
         [useLatestRelease](Result<server::ServerLoaderVersion, server::ServerError>* res) {
             if (res->ok()) {
                 auto& release = res->unwrap();
